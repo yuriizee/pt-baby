@@ -1,43 +1,45 @@
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.components.bluetooth import BluetoothServiceInfoBleak, async_discovered_service_info
+from homeassistant.components.bluetooth import async_discovered_service_info
 from .const import DOMAIN
 
 class PTBabyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
-    async def async_step_user(self, user_input=None):
-        """Крок ручного додавання через меню."""
-        errors = {}
-        if user_input is not None:
-            return self.async_create_entry(title=user_input["name"], data=user_input)
+    def __init__(self):
+        self._data = {}
 
-        # Скануємо пристрої навколо
+    async def async_step_user(self, user_input=None):
+        """Крок 1: Вибір пристрою."""
+        if user_input is not None:
+            self._data.update(user_input)
+            return await self.async_step_params()
+
         discovery_info = async_discovered_service_info(self.hass)
         devices = {
-            info.address: f"{info.name} ({info.address})"
+            info.address: f"{info.name or 'Невідомий'} ({info.address})"
             for info in discovery_info
-            if info.name and "BABY" in info.name.upper()
         }
-
-        if not devices:
-            return self.async_abort(reason="no_devices_found")
 
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema({
                 vol.Required("address"): vol.In(devices),
-                vol.Required("name", default="Дитяча колиска"): str
-            }),
-            errors=errors
+                vol.Required("name", default="PT Baby Swing"): str
+            })
         )
 
-    async def async_step_bluetooth(self, discovery_info: BluetoothServiceInfoBleak):
-        """Крок автоматичного виявлення (Discovery)."""
-        await self.async_set_unique_id(discovery_info.address)
-        self._abort_if_unique_id_configured()
+    async def async_step_params(self, user_input=None):
+        """Крок 2: Налаштування UUID та параметрів."""
+        if user_input is not None:
+            self._data.update(user_input)
+            return self.async_create_entry(title=self._data["name"], data=self._data)
 
         return self.async_show_form(
-            step_id="user",
-            description_placeholders={"name": discovery_info.name}
+            step_id="params",
+            data_schema=vol.Schema({
+                vol.Required("char_uuid", default="7772e5db-3868-4112-a1a9-f2669d106bf3"): str,
+                vol.Required("speed_cmd_prefix", default="cmd1"): str,
+                vol.Required("stop_cmd", default="cmd10"): str,
+            })
         )

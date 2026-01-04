@@ -1,40 +1,40 @@
 from homeassistant.components.fan import FanEntity, FanEntityFeature
 from bleak import BleakClient
-from .const import CHARACTERISTIC_CTRL
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
-    """Додавання колиски на основі вибору в меню."""
+    """Налаштування на основі даних з Config Entry."""
+    # Отримуємо всі дані, які ви ввели в UI
     address = config_entry.data["address"]
     name = config_entry.data["name"]
-    async_add_entities([PTBabyFan(address, name)])
+    char_uuid = config_entry.data["char_uuid"]
+    prefix = config_entry.data["speed_cmd_prefix"]
+    stop_cmd = config_entry.data["stop_cmd"]
+
+    async_add_entities([PTBabyFan(address, name, char_uuid, prefix, stop_cmd)])
 
 class PTBabyFan(FanEntity):
-    def __init__(self, address, name):
+    def __init__(self, address, name, char_uuid, prefix, stop_cmd):
         self._address = address
-        self._name = name
+        self._attr_name = name
+        self._char_uuid = char_uuid
+        self._prefix = prefix
+        self._stop_cmd = stop_cmd
+
+        self._attr_unique_id = f"{address}_swing"
         self._attr_supported_features = FanEntityFeature.SET_SPEED
         self._attr_percentage = 0
 
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def unique_id(self):
-        return self._address
-
-    async def _send_cmd(self, cmd):
-        # Використовуємо знайдену команду, наприклад cmd39 або cmd11 [cite: 318, 381]
+    async def _send_command(self, cmd: str):
         async with BleakClient(self._address) as client:
-            await client.write_gatt_char(CHARACTERISTIC_CTRL, cmd.encode('utf-8'))
+            await client.write_gatt_char(self._char_uuid, cmd.encode('utf-8'))
 
-    async def async_set_percentage(self, percentage):
+    async def async_set_percentage(self, percentage: int):
         if percentage == 0:
-            await self._send_cmd("cmd10") # Stop
+            await self._send_command(self._stop_cmd)
         else:
-            # Мапування швидкостей на ваші команди cmd11-cmd15 [cite: 314, 322]
-            idx = int(percentage / 20)
-            await self._send_cmd(f"cmd1{idx}")
+            step = int(percentage / 20)
+            await self._send_command(f"{self._prefix}{step}")
+
         self._attr_percentage = percentage
         self.async_write_ha_state()
 
