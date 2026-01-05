@@ -8,7 +8,6 @@ from typing import Any
 
 from bleak import BleakError
 from bleak.backends.device import BLEDevice
-# Додаємо імпорти конектора
 from bleak_retry_connector import establish_connection, BleakClientWithServiceCache
 
 from homeassistant.components import bluetooth
@@ -23,7 +22,9 @@ from .const import (
     CONF_WRITE_CHAR_UUID,
     CONF_NOTIFY_CHAR_UUID,
     CMD_POWER_ON,
+    CMD_POWER_OFF,
     SWING_SPEEDS,
+    MELODIES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -38,7 +39,6 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.service_uuid = entry.data[CONF_SERVICE_UUID]
         self.write_char_uuid = entry.data[CONF_WRITE_CHAR_UUID]
         self.notify_char_uuid = entry.data[CONF_NOTIFY_CHAR_UUID]
-        # Змінено типізацію
         self._client: BleakClientWithServiceCache | None = None
         self._device: BLEDevice | None = None
         self._lock = asyncio.Lock()
@@ -60,7 +60,7 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Update data via library."""
+        """Update data."""
         return {
             "is_on": self._is_on,
             "swing_speed": self._swing_speed,
@@ -76,7 +76,6 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._client and self._client.is_connected:
             return
 
-        # Завжди беремо найсвіжіший об'єкт пристрою з HA
         self._device = bluetooth.async_ble_device_from_address(
             self.hass, self.address, connectable=True
         )
@@ -84,102 +83,111 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not self._device:
             raise UpdateFailed(f"Device {self.address} not found")
 
-        # ВИПРАВЛЕННЯ: Використовуємо establish_connection замість BleakClient
         _LOGGER.debug("Connecting to %s", self.address)
         try:
             self._client = await establish_connection(
                 BleakClientWithServiceCache,
                 self._device,
                 name=self.address,
-                # Тут можна додати disconnected_callback, якщо потрібно
             )
 
-            # Підписка на повідомлення
+            # Спроба підписки (не критично, якщо не вдасться)
             try:
                 await self._client.start_notify(
                     self.notify_char_uuid, self._notification_handler
                 )
-            except Exception as e:
-                 _LOGGER.warning("Could not subscribe to notifications: %s", e)
+            except Exception:
+                pass
 
             _LOGGER.info("Connected to PT Baby Swing: %s", self.address)
-
-        except (BleakError, asyncio.TimeoutError) as err:
-            raise UpdateFailed(f"Error connecting to device: {err}") from err
+        except Exception as err:
+            raise UpdateFailed(f"Error connecting: {err}") from err
 
     @callback
     def _notification_handler(self, sender: int, data: bytearray) -> None:
-        """Handle notification from device."""
-        _LOGGER.debug("Received notification: %s", data.hex())
+        """Handle notification."""
+        _LOGGER.debug("Notification: %s", data.hex())
 
     async def async_send_command(self, command: str) -> None:
-        """Send command to device (Public method)."""
-        if not command:
-            return
+        """Send raw command to device."""
+        if not command: return
 
         async with self._lock:
             try:
                 await self._ensure_connected()
-
                 if not self._client or not self._client.is_connected:
-                     raise UpdateFailed("Connection failed")
+                    raise UpdateFailed("Connection lost")
 
                 cmd_bytes = command.encode('utf-8')
                 await self._client.write_gatt_char(
                     self.write_char_uuid, cmd_bytes, response=False
                 )
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.3) # Пауза після команди
                 _LOGGER.debug("Sent command: %s", command)
 
-            except (BleakError, asyncio.TimeoutError) as err:
-                _LOGGER.error("Error sending command %s: %s", command, err)
+            except Exception as err:
+                _LOGGER.error("Error sending %s: %s", command, err)
                 if self._client:
                     await self._client.disconnect()
                 self._client = None
                 raise UpdateFailed(f"Communication error: {err}") from err
 
+    # --- Основні методи керування ---
+
     async def async_turn_on(self) -> None:
+        """Увімкнення (пробудження)."""
         await self.async_send_command(CMD_POWER_ON)
         self._is_on = True
         self.async_set_updated_data(await self._async_update_data())
 
     async def async_turn_off(self) -> None:
-        await self.async_send_command("cmd39")
+        """Вимкнення."""
+        await self.async_send_command(CMD_POWER_OFF)
         self._is_on = False
         self._swing_speed = 0
         self.async_set_updated_data(await self._async_update_data())
 
     async def async_set_swing_speed(self, speed: int) -> None:
-        if speed not in SWING_SPEEDS:
-            if speed == 0:
-                await self.async_turn_off()
-                return
-            raise ValueError(f"Invalid speed: {speed}")
+        """Встановлення швидкості (1-5)."""
+        if speed == 0:
+            await self.async_turn_off()
+            return
 
-        if not self._is_on:
-            await self.async_turn_on()
-            await asyncio.sleep(0.5)
+        if speed not in SWING_SPEEDS:
+            _LOGGER.error("Invalid speed: %s", speed)
+            return
+
+        # ВАЖЛИВО: Завжди шлемо команду пробудження перед зміною швидкості,
+        # щоб гарантувати, що пристрій слухає.
+        await self.async_send_command(CMD_POWER_ON)
+        await asyncio.sleep(0.5) # Пауза на пробудження
 
         await self.async_send_command(SWING_SPEEDS[speed])
+
         self._swing_speed = speed
         self._is_on = True
         self.async_set_updated_data(await self._async_update_data())
 
+    # --- Мелодії ---
+
     async def async_set_melody(self, melody: int) -> None:
-        from .const import MELODIES, CMD_MELODY_ON
         if melody in MELODIES:
+            # Для мелодій теж бажано розбудити
+            if not self._is_on:
+                 await self.async_turn_on()
+
             await self.async_send_command(MELODIES[melody])
             self._current_melody = melody
             self._melody_on = True
             self.async_set_updated_data(await self._async_update_data())
 
     async def async_melody_on(self) -> None:
-        from .const import CMD_MELODY_ON
-        await self.async_send_command(CMD_MELODY_ON)
-        self._melody_on = True
-        self.async_set_updated_data(await self._async_update_data())
+        # Вмикаємо останню мелодію або першу
+        await self.async_set_melody(self._current_melody)
 
     async def async_melody_off(self) -> None:
+        # Якщо є команда стоп для музики - додайте її в const.py
+        # await self.async_send_command("cmd00")
         self._melody_on = False
         self.async_set_updated_data(await self._async_update_data())
 
@@ -193,11 +201,7 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if prev_m < 1: prev_m = 9
         await self.async_set_melody(prev_m)
 
-    async def async_volume_up(self) -> None:
-        pass
-
-    async def async_volume_down(self) -> None:
-        pass
+    # --- Інше ---
 
     async def async_set_timer(self, minutes: int) -> None:
         self._timer = minutes
@@ -206,6 +210,12 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_set_induction_mode(self, enabled: bool) -> None:
         self._induction_mode = enabled
         self.async_set_updated_data(await self._async_update_data())
+
+    async def async_volume_up(self) -> None:
+        pass
+
+    async def async_volume_down(self) -> None:
+        pass
 
     async def async_shutdown(self) -> None:
         if self._client and self._client.is_connected:

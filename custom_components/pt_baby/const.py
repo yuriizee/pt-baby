@@ -8,20 +8,20 @@ CONF_SERVICE_UUID = "service_uuid"
 CONF_WRITE_CHAR_UUID = "write_char_uuid"
 CONF_NOTIFY_CHAR_UUID = "notify_char_uuid"
 
-# Команди
-CMD_POWER_ON = "cmd38"
-CMD_MELODY_ON = "cmd39"
+# Команди керування
+CMD_POWER_ON = "cmd38"   # Пробудження / Ввімкнення
+CMD_POWER_OFF = "cmd39"  # Повне вимкнення (Stop)
 
-# Швидкості колисання
+# Швидкості колисання (cmd11 - cmd15)
 SWING_SPEEDS = {
-    1: "cmd10",
-    2: "cmd11",
-    3: "cmd12",
-    4: "cmd13",
-    5: "cmd14",
+    1: "cmd11",
+    2: "cmd12",
+    3: "cmd13",
+    4: "cmd14",
+    5: "cmd15",
 }
 
-# Мелодії
+# Мелодії (cmd01 - cmd09)
 MELODIES = {
     1: "cmd01",
     2: "cmd02",
@@ -33,6 +33,8 @@ MELODIES = {
     8: "cmd08",
     9: "cmd09",
 }
+
+CMD_MELODY_OFF = "cmd00" # Припускаємо команду зупинки музики, якщо відома
 
 # Налаштування
 CONF_MAC_ADDRESS = "mac_address"
