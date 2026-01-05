@@ -1,6 +1,6 @@
 from homeassistant.components.number import NumberEntity
 from bleak import BleakClient
-from .const import DOMAIN, CHARACTERISTIC_CTRL
+from .const import DOMAIN
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     address = config_entry.data["address"]

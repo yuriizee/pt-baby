@@ -1,8 +1,9 @@
 from homeassistant.components.select import SelectEntity
 from bleak import BleakClient
-from .const import DOMAIN, CHARACTERISTIC_CTRL
+from .const import DOMAIN
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
+    # Беремо дані, які ви ввели в інтерфейсі при налаштуванні
     address = config_entry.data["address"]
     char_uuid = config_entry.data["char_uuid"]
     async_add_entities([PTBabyMusicSelect(address, char_uuid)])
@@ -17,7 +18,7 @@ class PTBabyMusicSelect(SelectEntity):
         self._attr_current_option = "Вимкнути"
 
         self._mapping = {
-            "Вимкнути": "cmd00", # Припустимо, що 00 це стоп музики
+            "Вимкнути": "cmd00",
             "Мелодія 1": "cmd01",
             "Мелодія 2": "cmd02",
             "Мелодія 3": "cmd03"
