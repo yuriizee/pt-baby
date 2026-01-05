@@ -73,16 +73,17 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         }
 
     async def _ensure_connected(self) -> None:
-        """Гарантує підключення з розширеним пошуком."""
+        """Гарантує підключення з агресивним пошуком."""
         if self._client and self._client.is_connected:
             return
 
-        # Спроба 1: Шукаємо "хороший" пристрій (connectable)
+        # Спроба 1: Шукаємо "хороший" пристрій (connectable=True)
         self._device = bluetooth.async_ble_device_from_address(
             self.hass, self.address, connectable=True
         )
 
-        # Спроба 2: Якщо не знайшли, шукаємо будь-який (іноді допомагає, якщо пристрій спить)
+        # Спроба 2: Якщо не знайшли, шукаємо будь-який (connectable=False).
+        # Це допомагає знайти пристрої, які "сплять" або криво рекламують себе.
         if not self._device:
             _LOGGER.debug("Device not found as connectable, trying non-connectable scan...")
             self._device = bluetooth.async_ble_device_from_address(
@@ -112,7 +113,7 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.info("Disconnected from PT Baby Swing")
         self._client = None
         self._is_on = False
-        self.async_set_updated_data(self.data) # Оновлюємо UI
+        self.async_set_updated_data(self.data)
 
     async def async_send_command(self, command: str) -> None:
         """Відправка команди (публічний метод)."""
@@ -157,7 +158,7 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self.async_turn_off()
             return
 
-        # 1. Пробудження
+        # 1. Пробудження (ігноруємо помилки, якщо вже прокинувся)
         try:
              await self.async_send_command(CMD_POWER_ON)
              await asyncio.sleep(0.5)
@@ -175,8 +176,10 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_set_melody(self, melody: int) -> None:
         if melody in MELODIES:
             if not self._is_on:
-                 await self.async_send_command(CMD_POWER_ON)
-                 await asyncio.sleep(0.5)
+                 try:
+                     await self.async_send_command(CMD_POWER_ON)
+                     await asyncio.sleep(0.5)
+                 except Exception: pass
 
             await self.async_send_command(MELODIES[melody])
             self._current_melody = melody
