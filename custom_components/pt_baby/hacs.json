@@ -1,0 +1,7 @@
+{
+  "name": "PT Baby Swing",
+  "country": "UA",
+  "domains": ["pt_baby"],
+  "iot_class": "Local Push",
+  "homeassistant": "2024.1.0"
+}

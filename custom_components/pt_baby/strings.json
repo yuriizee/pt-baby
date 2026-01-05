@@ -1,0 +1,45 @@
+{
+  "config": {
+    "step": {
+      "bluetooth_confirm": {
+        "description": "Підтвердіть підключення до {name}",
+        "title": "Підключення до PT Baby Swing"
+      },
+      "user": {
+        "data": {
+          "address": "Адреса пристрою"
+        },
+        "title": "Виберіть PT Baby Swing пристрій"
+      }
+    },
+    "abort": {
+      "already_configured": "Пристрій вже налаштовано",
+      "no_devices_found": "Пристрої не знайдено"
+    }
+  },
+  "entity": {
+    "fan": {
+      "swing": {
+        "name": "Колисання"
+      }
+    },
+    "media_player": {
+      "melody": {
+        "name": "Мелодії"
+      }
+    },
+    "number": {
+      "timer": {
+        "name": "Таймер"
+      }
+    },
+    "switch": {
+      "power": {
+        "name": "Живлення"
+      },
+      "induction_mode": {
+        "name": "Індукційний режим"
+      }
+    }
+  }
+}

@@ -1,74 +1,81 @@
-import asyncio
+"""Fan platform for Baby Cradle (swing control)."""
+from __future__ import annotations
+
 import logging
+from typing import Any
+
 from homeassistant.components.fan import FanEntity, FanEntityFeature
-from bleak import BleakClient
-from .const import DOMAIN # Тільки DOMAIN
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util.percentage import (
+    percentage_to_ranged_value,
+    ranged_value_to_percentage,
+)
+
+from .const import DOMAIN
+from .coordinator import BabyCradleCoordinator
+from .entity import BabyCradleEntity
 
 _LOGGER = logging.getLogger(__name__)
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
-    data = config_entry.data
-    # Усі параметри беруться з data (тобто з UI)
-    async_add_entities([PTBabyFan(
-        data["address"],
-        data["name"],
-        data["char_uuid"],
-        data["on_cmd"],
-        data["off_cmd"],
-        data["speed_prefix"]
-    )])
+SPEED_RANGE = (1, 5)  # 5 швидкостей
 
-class PTBabyFan(FanEntity):
-    def __init__(self, address, name, char_uuid, on_cmd, off_cmd, prefix):
-        self._address = address
-        self._attr_name = name
-        self._char_uuid = char_uuid # Зберігаємо UUID з конфігу
-        self._on_cmd = on_cmd
-        self._off_cmd = off_cmd
-        self._prefix = prefix
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up the Baby Cradle fan."""
+    coordinator: BabyCradleCoordinator = hass.data[DOMAIN][entry.entry_id]
+    async_add_entities([BabyCradleSwingFan(coordinator)])
 
-        self._attr_unique_id = f"{address}_swing"
-        self._attr_supported_features = (
-            FanEntityFeature.SET_SPEED |
-            FanEntityFeature.TURN_ON |
-            FanEntityFeature.TURN_OFF
-        )
-        self._attr_percentage = 0
-        self._speed_count = 5
-        self._lock = asyncio.Lock()
+class BabyCradleSwingFan(BabyCradleEntity, FanEntity):
+    """Representation of Baby Cradle swing as a fan."""
+
+    _attr_supported_features = FanEntityFeature.SET_SPEED
+    _attr_speed_count = 5
+
+    def __init__(self, coordinator: BabyCradleCoordinator) -> None:
+        """Initialize the fan."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.address}_swing"
+        self._attr_name = "Колисання"
+        self._attr_translation_key = "swing"
 
     @property
-    def speed_count(self) -> int:
-        return self._speed_count
+    def is_on(self) -> bool:
+        """Return true if fan is on."""
+        return self.coordinator.data.get("swing_speed", 0) > 0
 
-    async def _write(self, cmd: str):
-        async with self._lock:
-            try:
-                _LOGGER.debug(f"Connecting to {self._address} for command {cmd}")
-                async with BleakClient(self._address, timeout=10.0) as client:
-                    # Використовуємо self._char_uuid
-                    await client.write_gatt_char(self._char_uuid, cmd.encode('utf-8'))
-                    await asyncio.sleep(0.3)
-            except Exception as e:
-                _LOGGER.error(f"Error sending command {cmd}: {e}")
+    @property
+    def percentage(self) -> int | None:
+        """Return the current speed percentage."""
+        speed = self.coordinator.data.get("swing_speed", 0)
+        if speed == 0:
+            return 0
+        return ranged_value_to_percentage(SPEED_RANGE, speed)
 
-    async def async_set_percentage(self, percentage: int):
+    async def async_set_percentage(self, percentage: int) -> None:
+        """Set the speed percentage of the fan."""
         if percentage == 0:
-            await self._write(self._off_cmd)
-        else:
-            if self._attr_percentage == 0:
-                await self._write(self._on_cmd)
-                await asyncio.sleep(0.5)
+            await self.async_turn_off()
+            return
 
-            speed_idx = int(percentage / 20)
-            await self._write(f"{self._prefix}{speed_idx}")
+        speed = int(percentage_to_ranged_value(SPEED_RANGE, percentage))
+        await self.coordinator.async_set_swing_speed(speed)
 
-        self._attr_percentage = percentage
-        self.async_write_ha_state()
+    async def async_turn_on(
+        self,
+        percentage: int | None = None,
+        preset_mode: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Turn on the fan."""
+        if percentage is None:
+            percentage = 20  # Default to speed 1
+        await self.async_set_percentage(percentage)
 
-    async def async_turn_on(self, percentage: int | None = None, preset_mode: str | None = None, **kwargs) -> None:
-        target_percentage = percentage or 20
-        await self.async_set_percentage(target_percentage)
-
-    async def async_turn_off(self, **kwargs) -> None:
-        await self.async_set_percentage(0)
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn off the fan."""
+        await self.coordinator.async_set_swing_speed(0)

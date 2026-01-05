@@ -1,11 +1,16 @@
 {
   "domain": "pt_baby",
   "name": "PT Baby Swing",
-  "documentation": "",
-  "dependencies": ["bluetooth"],
   "codeowners": ["@yuriizee"],
-  "requirements": ["bleak"],
-  "version": "0.1.0",
   "config_flow": true,
-  "iot_class": "local_polling"
+  "documentation": "https://github.com/yuriizee/pt_baby",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/yuriizee/pt_baby/issues",
+  "requirements": ["bleak>=0.21.0"],
+  "version": "1.0.0",
+  "bluetooth": [
+    {
+      "local_name": "PT*"
+    }
+  ]
 }

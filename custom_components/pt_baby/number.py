@@ -1,30 +1,50 @@
-from homeassistant.components.number import NumberEntity
-from bleak import BleakClient
+"""Number platform for Baby Cradle timer."""
+from __future__ import annotations
+
+import logging
+
+from homeassistant.components.number import NumberEntity, NumberMode
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfTime
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
 from .const import DOMAIN
+from .coordinator import BabyCradleCoordinator
+from .entity import BabyCradleEntity
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
-    """Налаштування гучності."""
-    address = config_entry.data["address"]
-    # Беремо строго з конфігурації
-    char_uuid = config_entry.data["char_uuid"]
+_LOGGER = logging.getLogger(__name__)
 
-    async_add_entities([PTBabyVolume(address, char_uuid)])
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up the Baby Cradle number entities."""
+    coordinator: BabyCradleCoordinator = hass.data[DOMAIN][entry.entry_id]
+    async_add_entities([BabyCradleTimer(coordinator)])
 
-class PTBabyVolume(NumberEntity):
-    def __init__(self, address, char_uuid):
-        self._address = address
-        self._char_uuid = char_uuid
-        self._attr_name = "Гучність колиски"
-        self._attr_unique_id = f"{address}_volume"
-        self._attr_native_min_value = 0
-        self._attr_native_max_value = 9
-        self._attr_native_step = 1
-        self._attr_native_value = 5
+class BabyCradleTimer(BabyCradleEntity, NumberEntity):
+    """Representation of Baby Cradle timer."""
+
+    _attr_native_min_value = 0
+    _attr_native_max_value = 120  # 2 години
+    _attr_native_step = 5
+    _attr_native_unit_of_measurement = UnitOfTime.MINUTES
+    _attr_mode = NumberMode.SLIDER
+
+    def __init__(self, coordinator: BabyCradleCoordinator) -> None:
+        """Initialize the timer."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.address}_timer"
+        self._attr_name = "Таймер"
+        self._attr_translation_key = "timer"
+
+    @property
+    def native_value(self) -> float:
+        """Return the current timer value."""
+        return self.coordinator.data.get("timer", 0)
 
     async def async_set_native_value(self, value: float) -> None:
-        cmd = f"cmd2{int(value)}"
-        # Використовуємо UUID, отриманий з налаштувань
-        async with BleakClient(self._address) as client:
-            await client.write_gatt_char(self._char_uuid, cmd.encode('utf-8'))
-        self._attr_native_value = value
-        self.async_write_ha_state()
+        """Set new timer value."""
+        await self.coordinator.async_set_timer(int(value))
