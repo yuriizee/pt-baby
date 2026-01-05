@@ -3,9 +3,12 @@ from bleak import BleakClient
 from .const import DOMAIN
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
-    # Беремо дані, які ви ввели в інтерфейсі при налаштуванні
+    """Налаштування мелодій."""
     address = config_entry.data["address"]
+    # Жодного хардкоду. Якщо в конфізі немає UUID, нехай впаде помилка KeyError,
+    # це краще, ніж прихований хардкод.
     char_uuid = config_entry.data["char_uuid"]
+
     async_add_entities([PTBabyMusicSelect(address, char_uuid)])
 
 class PTBabyMusicSelect(SelectEntity):
@@ -26,6 +29,7 @@ class PTBabyMusicSelect(SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         cmd = self._mapping.get(option)
+        # Використовуємо UUID, отриманий з налаштувань
         async with BleakClient(self._address) as client:
             await client.write_gatt_char(self._char_uuid, cmd.encode('utf-8'))
         self._attr_current_option = option

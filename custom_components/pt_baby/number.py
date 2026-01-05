@@ -3,8 +3,11 @@ from bleak import BleakClient
 from .const import DOMAIN
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
+    """Налаштування гучності."""
     address = config_entry.data["address"]
+    # Беремо строго з конфігурації
     char_uuid = config_entry.data["char_uuid"]
+
     async_add_entities([PTBabyVolume(address, char_uuid)])
 
 class PTBabyVolume(NumberEntity):
@@ -20,6 +23,7 @@ class PTBabyVolume(NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         cmd = f"cmd2{int(value)}"
+        # Використовуємо UUID, отриманий з налаштувань
         async with BleakClient(self._address) as client:
             await client.write_gatt_char(self._char_uuid, cmd.encode('utf-8'))
         self._attr_native_value = value
