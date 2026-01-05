@@ -10,8 +10,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .coordinator import BabyCradleCoordinator
-from .entity import BabyCradleEntity
+from .coordinator import PTBabyCoordinator
+from .entity import PTBabyEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,16 +21,16 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Baby Cradle switches."""
-    coordinator: BabyCradleCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: PTBabyCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([
-        BabyCradlePowerSwitch(coordinator),
-        BabyCradleInductionSwitch(coordinator),
+        PTBabyPowerSwitch(coordinator),
+        PTBabyInductionSwitch(coordinator),
     ])
 
-class BabyCradlePowerSwitch(BabyCradleEntity, SwitchEntity):
+class PTBabyPowerSwitch(PTBabyEntity, SwitchEntity):
     """Representation of Baby Cradle power switch."""
 
-    def __init__(self, coordinator: BabyCradleCoordinator) -> None:
+    def __init__(self, coordinator: PTBabyCoordinator) -> None:
         """Initialize the switch."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.address}_power"
@@ -50,10 +50,10 @@ class BabyCradlePowerSwitch(BabyCradleEntity, SwitchEntity):
         """Turn the switch off."""
         await self.coordinator.async_turn_off()
 
-class BabyCradleInductionSwitch(BabyCradleEntity, SwitchEntity):
+class PTBabyInductionSwitch(PTBabyEntity, SwitchEntity):
     """Representation of Baby Cradle induction mode switch."""
 
-    def __init__(self, coordinator: BabyCradleCoordinator) -> None:
+    def __init__(self, coordinator: PTBabyCoordinator) -> None:
         """Initialize the switch."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.address}_induction"

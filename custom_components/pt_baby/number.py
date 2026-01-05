@@ -10,8 +10,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .coordinator import BabyCradleCoordinator
-from .entity import BabyCradleEntity
+from .coordinator import PTBabyCoordinator
+from .entity import PTBabyEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,10 +21,10 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Baby Cradle number entities."""
-    coordinator: BabyCradleCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([BabyCradleTimer(coordinator)])
+    coordinator: PTBabyCoordinator = hass.data[DOMAIN][entry.entry_id]
+    async_add_entities([PTBabyTimer(coordinator)])
 
-class BabyCradleTimer(BabyCradleEntity, NumberEntity):
+class PTBabyTimer(PTBabyEntity, NumberEntity):
     """Representation of Baby Cradle timer."""
 
     _attr_native_min_value = 0
@@ -33,7 +33,7 @@ class BabyCradleTimer(BabyCradleEntity, NumberEntity):
     _attr_native_unit_of_measurement = UnitOfTime.MINUTES
     _attr_mode = NumberMode.SLIDER
 
-    def __init__(self, coordinator: BabyCradleCoordinator) -> None:
+    def __init__(self, coordinator: PTBabyCoordinator) -> None:
         """Initialize the timer."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.address}_timer"

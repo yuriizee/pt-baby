@@ -9,8 +9,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from bleak import BleakClient
 
 from .const import DOMAIN
-from .coordinator import BabyCradleCoordinator
-from .entity import BabyCradleEntity
+from .coordinator import PTBabyCoordinator
+from .entity import PTBabyEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,13 +20,13 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the debug text input."""
-    coordinator: BabyCradleCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: PTBabyCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities([PTBabyDebugInput(coordinator)])
 
-class PTBabyDebugInput(BabyCradleEntity, TextEntity):
+class PTBabyDebugInput(PTBabyEntity, TextEntity):
     """Allows sending raw commands to the swing."""
 
-    def __init__(self, coordinator: BabyCradleCoordinator) -> None:
+    def __init__(self, coordinator: PTBabyCoordinator) -> None:
         super().__init__(coordinator)
         self._attr_name = "Debug Command"
         self._attr_unique_id = f"{coordinator.address}_debug_cmd"

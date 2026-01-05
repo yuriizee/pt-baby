@@ -26,7 +26,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-class BabyCradleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Class to manage fetching Baby Cradle data."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:

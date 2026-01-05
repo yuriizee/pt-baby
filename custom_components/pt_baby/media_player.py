@@ -14,8 +14,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN, MELODIES
-from .coordinator import BabyCradleCoordinator
-from .entity import BabyCradleEntity
+from .coordinator import PTBabyCoordinator
+from .entity import PTBabyEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,10 +25,10 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Baby Cradle media player."""
-    coordinator: BabyCradleCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([BabyCradleMelodyPlayer(coordinator)])
+    coordinator: PTBabyCoordinator = hass.data[DOMAIN][entry.entry_id]
+    async_add_entities([PTBabyMelodyPlayer(coordinator)])
 
-class BabyCradleMelodyPlayer(BabyCradleEntity, MediaPlayerEntity):
+class PTBabyMelodyPlayer(PTBabyEntity, MediaPlayerEntity):
     """Representation of Baby Cradle melody player."""
 
     _attr_supported_features = (
@@ -40,7 +40,7 @@ class BabyCradleMelodyPlayer(BabyCradleEntity, MediaPlayerEntity):
         | MediaPlayerEntityFeature.VOLUME_STEP
     )
 
-    def __init__(self, coordinator: BabyCradleCoordinator) -> None:
+    def __init__(self, coordinator: PTBabyCoordinator) -> None:
         """Initialize the media player."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.address}_melody"

@@ -1,4 +1,4 @@
-class BabyCradleSwingFan(BabyCradleEntity, FanEntity):
+class PTBabyFan(BabyCradleEntity, FanEntity):
     """Representation of Baby Cradle swing as a fan."""
 
     # ВИПРАВЛЕННЯ: Додаємо TURN_ON та TURN_OFF до списку можливостей

@@ -7,12 +7,12 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN, CONF_DEVICE_NAME
 from .coordinator import BabyCradleCoordinator
 
-class BabyCradleEntity(CoordinatorEntity[BabyCradleCoordinator]):
+class PTBabyEntity(CoordinatorEntity[PTBabyCoordinator]):
     """Base class for Baby Cradle entities."""
 
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: BabyCradleCoordinator) -> None:
+    def __init__(self, coordinator: PTBabyCoordinator) -> None:
         """Initialize the entity."""
         super().__init__(coordinator)
         self._attr_device_info = DeviceInfo(

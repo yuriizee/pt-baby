@@ -26,7 +26,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-class BabyCradleConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class PTBabyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Baby Cradle."""
 
     VERSION = 1
