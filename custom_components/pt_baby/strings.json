@@ -14,7 +14,8 @@
     },
     "abort": {
       "already_configured": "Пристрій вже налаштовано",
-      "no_devices_found": "Пристрої не знайдено"
+      "no_devices_found": "Пристрої не знайдено",
+      "cannot_discover_services": "Не вдалося виявити Bluetooth сервіси пристрою"
     }
   },
   "entity": {

@@ -3,17 +3,10 @@ from homeassistant.const import Platform
 
 DOMAIN = "pt_baby"
 
-# Bluetooth service UUID (потрібно замінити на реальний UUID вашого пристрою)
-# Основний сервіс (Main Service)
-SERVICE_UUID = "03b80e5a-ede8-4b33-a751-6ce34ec4c700"
-
-# Характеристика для запису команд (Write) - Handle 0x0003
-# Сюди шлемо cmd38, cmd11 і т.д.
-WRITE_CHARACTERISTIC_UUID = "7772e5db-3868-4112-a1a9-f2669d106bf3"
-
-# Характеристика для отримання статусу (Notify)
-# Зазвичай це вона шле відповіді, якщо підписатися
-NOTIFY_CHARACTERISTIC_UUID = "49535343-8841-43f4-a8d4-ecbe34729bb3"
+# Bluetooth UUID constants
+CONF_SERVICE_UUID = "service_uuid"
+CONF_WRITE_CHAR_UUID = "write_char_uuid"
+CONF_NOTIFY_CHAR_UUID = "notify_char_uuid"
 
 # Команди
 CMD_POWER_ON = "cmd38"

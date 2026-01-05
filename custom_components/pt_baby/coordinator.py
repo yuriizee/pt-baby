@@ -17,9 +17,9 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import (
     DOMAIN,
     CONF_MAC_ADDRESS,
-    SERVICE_UUID,
-    WRITE_CHARACTERISTIC_UUID,
-    NOTIFY_CHARACTERISTIC_UUID,
+    CONF_SERVICE_UUID,
+    CONF_WRITE_CHAR_UUID,
+    CONF_NOTIFY_CHAR_UUID,
     CMD_POWER_ON,
     SWING_SPEEDS,
 )
@@ -33,6 +33,9 @@ class BabyCradleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Initialize."""
         self.entry = entry
         self.address = entry.data[CONF_MAC_ADDRESS]
+        self.service_uuid = entry.data[CONF_SERVICE_UUID]
+        self.write_char_uuid = entry.data[CONF_WRITE_CHAR_UUID]
+        self.notify_char_uuid = entry.data[CONF_NOTIFY_CHAR_UUID]
         self._client: BleakClient | None = None
         self._device: BLEDevice | None = None
         self._is_on = False
@@ -42,6 +45,11 @@ class BabyCradleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._volume = 50
         self._timer = 0
         self._induction_mode = False
+
+        _LOGGER.info(
+            "Initialized PT Baby with service: %s, write: %s, notify: %s",
+            self.service_uuid, self.write_char_uuid, self.notify_char_uuid
+        )
 
         super().__init__(
             hass,
@@ -83,10 +91,10 @@ class BabyCradleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             # Підписка на повідомлення
             await self._client.start_notify(
-                NOTIFY_CHARACTERISTIC_UUID, self._notification_handler
+                self.notify_char_uuid, self._notification_handler
             )
 
-            _LOGGER.info("Connected to Baby Cradle: %s", self.address)
+            _LOGGER.info("Connected to PT Baby Swing: %s", self.address)
         except (BleakError, asyncio.TimeoutError) as err:
             raise UpdateFailed(f"Error connecting to device: {err}") from err
 
@@ -108,7 +116,7 @@ class BabyCradleCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             cmd_bytes = command.encode()
 
             await self._client.write_gatt_char(
-                WRITE_CHARACTERISTIC_UUID, cmd_bytes, response=False
+                self.write_char_uuid, cmd_bytes, response=False
             )
 
             _LOGGER.debug("Sent command: %s", command)
