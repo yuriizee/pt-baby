@@ -3,16 +3,19 @@ from homeassistant.const import Platform
 
 DOMAIN = "pt_baby"
 
-# Bluetooth UUID constants
+# UUID (ключі для конфігурації)
 CONF_SERVICE_UUID = "service_uuid"
 CONF_WRITE_CHAR_UUID = "write_char_uuid"
 CONF_NOTIFY_CHAR_UUID = "notify_char_uuid"
+CONF_MAC_ADDRESS = "mac_address"
+CONF_DEVICE_NAME = "device_name"
 
-# Команди керування
-CMD_POWER_ON = "cmd38"   # Пробудження / Ввімкнення
-CMD_POWER_OFF = "cmd39"  # Повне вимкнення (Stop)
+# --- КОМАНДИ ---
+# Важливо: cmd38 - це пробудження. Без нього нічого не працює.
+CMD_POWER_ON = "cmd38"
+CMD_POWER_OFF = "cmd39"
 
-# Швидкості колисання (cmd11 - cmd15)
+# Швидкості (виправлено згідно вашого опису: 1 -> cmd11)
 SWING_SPEEDS = {
     1: "cmd11",
     2: "cmd12",
@@ -21,7 +24,7 @@ SWING_SPEEDS = {
     5: "cmd15",
 }
 
-# Мелодії (cmd01 - cmd09)
+# Мелодії
 MELODIES = {
     1: "cmd01",
     2: "cmd02",
@@ -34,13 +37,9 @@ MELODIES = {
     9: "cmd09",
 }
 
-CMD_MELODY_OFF = "cmd00" # Припускаємо команду зупинки музики, якщо відома
+CMD_MELODY_OFF = "cmd00" # Команда зупинки музики (якщо є)
 
-# Налаштування
-CONF_MAC_ADDRESS = "mac_address"
-CONF_DEVICE_NAME = "device_name"
-
-# Атрибути
+# Атрибути для HA
 ATTR_SWING_SPEED = "swing_speed"
 ATTR_MELODY = "melody"
 ATTR_TIMER = "timer"
