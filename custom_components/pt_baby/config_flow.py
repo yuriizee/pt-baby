@@ -5,13 +5,17 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-from bleak import BleakScanner, BleakClient
+from bleak import BleakError
 
 from homeassistant import config_entries
 from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
     async_discovered_service_info,
+    async_ble_device_from_address, # Додано імпорт
 )
+# Додано імпорт конектора
+from bleak_retry_connector import establish_connection, BleakClientWithServiceCache
+
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.data_entry_flow import FlowResult
 
@@ -35,18 +39,31 @@ class PTBabyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self._discovery_info: BluetoothServiceInfoBleak | None = None
         self._discovered_devices: dict[str, BluetoothServiceInfoBleak] = {}
-        self._device_services: dict[str, Any] = {}
 
     async def _discover_device_services(self, address: str) -> dict[str, str] | None:
         """Discover services and characteristics of the device."""
         try:
-            async with BleakClient(address) as client:
+            # Отримуємо об'єкт пристрою з кешу HA
+            device = async_ble_device_from_address(self.hass, address, connectable=True)
+            if not device:
+                _LOGGER.error("Device %s not found", address)
+                return None
+
+            _LOGGER.debug("Connecting to device %s for service discovery", address)
+
+            # ВИПРАВЛЕННЯ: Використовуємо establish_connection
+            client = await establish_connection(
+                BleakClientWithServiceCache,
+                device,
+                name=address
+            )
+
+            try:
                 services = {}
 
                 # Отримуємо всі сервіси
                 for service in client.services:
                     service_uuid = service.uuid.lower()
-                    _LOGGER.debug("Found service: %s", service_uuid)
 
                     write_char = None
                     notify_char = None
@@ -54,30 +71,25 @@ class PTBabyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     # Шукаємо характеристики для запису та нотифікацій
                     for char in service.characteristics:
                         char_uuid = char.uuid.lower()
-                        _LOGGER.debug("  Characteristic: %s, properties: %s", char_uuid, char.properties)
 
-                        # Шукаємо характеристику для запису
                         if "write" in char.properties or "write-without-response" in char.properties:
                             if write_char is None:
                                 write_char = char_uuid
 
-                        # Шукаємо характеристику для нотифікацій
                         if "notify" in char.properties or "indicate" in char.properties:
                             if notify_char is None:
                                 notify_char = char_uuid
 
-                    # Якщо знайшли обидві характеристики в одному сервісі
                     if write_char and notify_char:
                         services = {
                             CONF_SERVICE_UUID: service_uuid,
                             CONF_WRITE_CHAR_UUID: write_char,
                             CONF_NOTIFY_CHAR_UUID: notify_char,
                         }
-                        _LOGGER.info("Found suitable service: %s with write: %s and notify: %s",
-                                   service_uuid, write_char, notify_char)
+                        _LOGGER.info("Found suitable service: %s", service_uuid)
                         return services
 
-                # Якщо не знайшли в одному сервісі, шукаємо окремо
+                # Якщо не знайшли в одному сервісі, шукаємо по всіх
                 if not services:
                     write_char = None
                     notify_char = None
@@ -99,12 +111,14 @@ class PTBabyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             CONF_WRITE_CHAR_UUID: write_char,
                             CONF_NOTIFY_CHAR_UUID: notify_char,
                         }
-                        _LOGGER.info("Found characteristics across services: write: %s, notify: %s",
-                                   write_char, notify_char)
                         return services
 
-                _LOGGER.warning("Could not find suitable service/characteristics for device %s", address)
+                _LOGGER.warning("Could not find suitable service for device %s", address)
                 return None
+
+            finally:
+                # Обов'язково відключаємось
+                await client.disconnect()
 
         except Exception as err:
             _LOGGER.error("Error discovering device services: %s", err)
@@ -127,7 +141,6 @@ class PTBabyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         discovery_info = self._discovery_info
 
         if user_input is not None:
-            # Виявляємо сервіси перед створенням entry
             services = await self._discover_device_services(discovery_info.address)
 
             if not services:
@@ -159,7 +172,6 @@ class PTBabyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(address, raise_on_progress=False)
             self._abort_if_unique_id_configured()
 
-            # Виявляємо сервіси
             services = await self._discover_device_services(address)
 
             if not services:
@@ -198,7 +210,6 @@ class PTBabyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ):
                 continue
 
-            # Фільтр для пошуку пристрою PT Baby
             if discovery_info.name and "pt" in discovery_info.name.lower():
                 self._discovered_devices[discovery_info.address] = discovery_info
 
