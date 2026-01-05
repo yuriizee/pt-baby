@@ -6,16 +6,14 @@ from typing import Any
 
 import voluptuous as vol
 from bleak import BleakError
+from bleak_retry_connector import establish_connection, BleakClientWithServiceCache
 
 from homeassistant import config_entries
 from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
     async_discovered_service_info,
-    async_ble_device_from_address, # Додано імпорт
+    async_ble_device_from_address,
 )
-# Додано імпорт конектора
-from bleak_retry_connector import establish_connection, BleakClientWithServiceCache
-
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.data_entry_flow import FlowResult
 
@@ -38,91 +36,8 @@ class PTBabyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Initialize the config flow."""
         self._discovery_info: BluetoothServiceInfoBleak | None = None
-        self._discovered_devices: dict[str, BluetoothServiceInfoBleak] = {}
-
-    async def _discover_device_services(self, address: str) -> dict[str, str] | None:
-        """Discover services and characteristics of the device."""
-        try:
-            # Отримуємо об'єкт пристрою з кешу HA
-            device = async_ble_device_from_address(self.hass, address, connectable=True)
-            if not device:
-                _LOGGER.error("Device %s not found", address)
-                return None
-
-            _LOGGER.debug("Connecting to device %s for service discovery", address)
-
-            # ВИПРАВЛЕННЯ: Використовуємо establish_connection
-            client = await establish_connection(
-                BleakClientWithServiceCache,
-                device,
-                name=address
-            )
-
-            try:
-                services = {}
-
-                # Отримуємо всі сервіси
-                for service in client.services:
-                    service_uuid = service.uuid.lower()
-
-                    write_char = None
-                    notify_char = None
-
-                    # Шукаємо характеристики для запису та нотифікацій
-                    for char in service.characteristics:
-                        char_uuid = char.uuid.lower()
-
-                        if "write" in char.properties or "write-without-response" in char.properties:
-                            if write_char is None:
-                                write_char = char_uuid
-
-                        if "notify" in char.properties or "indicate" in char.properties:
-                            if notify_char is None:
-                                notify_char = char_uuid
-
-                    if write_char and notify_char:
-                        services = {
-                            CONF_SERVICE_UUID: service_uuid,
-                            CONF_WRITE_CHAR_UUID: write_char,
-                            CONF_NOTIFY_CHAR_UUID: notify_char,
-                        }
-                        _LOGGER.info("Found suitable service: %s", service_uuid)
-                        return services
-
-                # Якщо не знайшли в одному сервісі, шукаємо по всіх
-                if not services:
-                    write_char = None
-                    notify_char = None
-                    first_service = None
-
-                    for service in client.services:
-                        if first_service is None:
-                            first_service = service.uuid.lower()
-
-                        for char in service.characteristics:
-                            if write_char is None and ("write" in char.properties or "write-without-response" in char.properties):
-                                write_char = char.uuid.lower()
-                            if notify_char is None and ("notify" in char.properties or "indicate" in char.properties):
-                                notify_char = char.uuid.lower()
-
-                    if write_char and notify_char and first_service:
-                        services = {
-                            CONF_SERVICE_UUID: first_service,
-                            CONF_WRITE_CHAR_UUID: write_char,
-                            CONF_NOTIFY_CHAR_UUID: notify_char,
-                        }
-                        return services
-
-                _LOGGER.warning("Could not find suitable service for device %s", address)
-                return None
-
-            finally:
-                # Обов'язково відключаємось
-                await client.disconnect()
-
-        except Exception as err:
-            _LOGGER.error("Error discovering device services: %s", err)
-            return None
+        self._discovered_device_address: str | None = None
+        self._discovered_device_name: str | None = None
 
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
@@ -131,101 +46,160 @@ class PTBabyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
         self._discovery_info = discovery_info
+        self._discovered_device_address = discovery_info.address
+        self._discovered_device_name = discovery_info.name
         return await self.async_step_bluetooth_confirm()
 
     async def async_step_bluetooth_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Confirm discovery."""
-        assert self._discovery_info is not None
-        discovery_info = self._discovery_info
-
         if user_input is not None:
-            services = await self._discover_device_services(discovery_info.address)
+            # Переходимо до вибору UUID
+            return await self.async_step_uuid_selection()
 
-            if not services:
-                return self.async_abort(reason="cannot_discover_services")
-
-            return self.async_create_entry(
-                title=discovery_info.name or "PT Baby Swing",
-                data={
-                    CONF_MAC_ADDRESS: discovery_info.address,
-                    CONF_DEVICE_NAME: discovery_info.name,
-                    **services,
-                },
-            )
-
-        self._set_confirm_only()
         return self.async_show_form(
             step_id="bluetooth_confirm",
             description_placeholders={
-                "name": discovery_info.name or discovery_info.address
+                "name": self._discovery_info.name or self._discovery_info.address
             },
         )
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle user initiated flow."""
+        """Крок 1: Вибір пристрою зі списку."""
         if user_input is not None:
             address = user_input[CONF_ADDRESS]
             await self.async_set_unique_id(address, raise_on_progress=False)
             self._abort_if_unique_id_configured()
 
-            services = await self._discover_device_services(address)
+            self._discovered_device_address = address
+            # Пробуємо знайти ім'я, якщо є
+            device = async_ble_device_from_address(self.hass, address)
+            self._discovered_device_name = device.name if device else address
 
-            if not services:
-                return self.async_show_form(
-                    step_id="user",
-                    data_schema=vol.Schema(
-                        {
-                            vol.Required(CONF_ADDRESS): vol.In(
-                                {
-                                    addr: f"{info.name} ({addr})"
-                                    for addr, info in self._discovered_devices.items()
-                                }
-                            ),
-                        }
-                    ),
-                    errors={"base": "cannot_discover_services"},
-                )
+            # Переходимо до кроку вибору UUID
+            return await self.async_step_uuid_selection()
 
-            device_info = self._discovered_devices.get(address)
-
-            return self.async_create_entry(
-                title=device_info.name if device_info else "PT Baby Swing",
-                data={
-                    CONF_MAC_ADDRESS: address,
-                    CONF_DEVICE_NAME: device_info.name if device_info else "PT Baby Swing",
-                    **services,
-                },
-            )
-
+        # Скануємо пристрої
         current_addresses = self._async_current_ids()
+        discovered_devices = {}
 
         for discovery_info in async_discovered_service_info(self.hass, False):
-            if (
-                discovery_info.address in current_addresses
-                or discovery_info.address in self._discovered_devices
-            ):
+            if discovery_info.address in current_addresses:
                 continue
+            # Показуємо всі пристрої, або фільтруємо по імені якщо хочете
+            name = discovery_info.name or "Unknown"
+            discovered_devices[discovery_info.address] = f"{name} ({discovery_info.address})"
 
-            if discovery_info.name and "pt" in discovery_info.name.lower():
-                self._discovered_devices[discovery_info.address] = discovery_info
-
-        if not self._discovered_devices:
+        if not discovered_devices:
             return self.async_abort(reason="no_devices_found")
 
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_ADDRESS): vol.In(
-                        {
-                            address: f"{info.name} ({address})"
-                            for address, info in self._discovered_devices.items()
-                        }
-                    ),
+                    vol.Required(CONF_ADDRESS): vol.In(discovered_devices),
                 }
             ),
+        )
+
+    async def async_step_uuid_selection(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Крок 2: Вибір UUID зі списку доступних на пристрої."""
+        errors = {}
+
+        if user_input is not None:
+            # Користувач вибрав UUID, створюємо інтеграцію
+            return self.async_create_entry(
+                title=self._discovered_device_name or "PT Baby Swing",
+                data={
+                    CONF_MAC_ADDRESS: self._discovered_device_address,
+                    CONF_DEVICE_NAME: self._discovered_device_name,
+                    CONF_SERVICE_UUID: user_input[CONF_SERVICE_UUID],
+                    CONF_WRITE_CHAR_UUID: user_input[CONF_WRITE_CHAR_UUID],
+                    CONF_NOTIFY_CHAR_UUID: user_input[CONF_NOTIFY_CHAR_UUID],
+                },
+            )
+
+        # Підключаємось до пристрою, щоб отримати список UUID
+        address = self._discovered_device_address
+        device = async_ble_device_from_address(self.hass, address, connectable=True)
+
+        if not device:
+            return self.async_abort(reason="cannot_connect")
+
+        # Списки для Dropdown меню
+        services_list = {}
+        write_chars_list = {}
+        notify_chars_list = {}
+
+        try:
+            _LOGGER.debug("Connecting to %s to fetch UUIDs", address)
+            client = await establish_connection(
+                BleakClientWithServiceCache, device, name=address
+            )
+
+            try:
+                # Перебираємо всі сервіси та характеристики
+                for service in client.services:
+                    srv_uuid = service.uuid.lower()
+                    services_list[srv_uuid] = f"{srv_uuid} ({service.description or 'Service'})"
+
+                    for char in service.characteristics:
+                        uuid = char.uuid.lower()
+                        props = ",".join(char.properties)
+                        label = f"{uuid} [{props}]"
+
+                        # Розподіляємо по списках залежно від властивостей
+                        if "write" in char.properties or "write-without-response" in char.properties:
+                            write_chars_list[uuid] = label
+
+                        if "notify" in char.properties or "indicate" in char.properties:
+                            notify_chars_list[uuid] = label
+
+                        # Також додаємо у списки "все підряд", якщо властивості не чіткі
+                        # (опціонально, але краще мати вибір)
+
+            finally:
+                await client.disconnect()
+
+        except Exception as err:
+            _LOGGER.error("Error fetching services: %s", err)
+            errors["base"] = "cannot_connect"
+            # Якщо не вдалося підключитися, дамо можливість ввести вручну (текстові поля)
+            services_list = {}
+            write_chars_list = {}
+            notify_chars_list = {}
+
+        # Формуємо схему. Якщо списки пусті - Text Input, якщо є - Select
+        schema_dict = {}
+
+        # 1. Service UUID
+        if services_list:
+            schema_dict[vol.Required(CONF_SERVICE_UUID)] = vol.In(services_list)
+        else:
+            schema_dict[vol.Required(CONF_SERVICE_UUID)] = str
+
+        # 2. Write Characteristic UUID
+        if write_chars_list:
+            schema_dict[vol.Required(CONF_WRITE_CHAR_UUID)] = vol.In(write_chars_list)
+        else:
+            schema_dict[vol.Required(CONF_WRITE_CHAR_UUID)] = str
+
+        # 3. Notify Characteristic UUID
+        if notify_chars_list:
+            schema_dict[vol.Required(CONF_NOTIFY_CHAR_UUID)] = vol.In(notify_chars_list)
+        else:
+            schema_dict[vol.Required(CONF_NOTIFY_CHAR_UUID)] = str
+
+        return self.async_show_form(
+            step_id="uuid_selection",
+            data_schema=vol.Schema(schema_dict),
+            errors=errors,
+            description_placeholders={
+                "device_name": self._discovered_device_name
+            }
         )
