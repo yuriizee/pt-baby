@@ -82,8 +82,7 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.hass, self.address, connectable=True
         )
 
-        # Спроба 2: Якщо не знайшли, шукаємо будь-який (connectable=False).
-        # Це допомагає знайти пристрої, які "сплять" або криво рекламують себе.
+        # Спроба 2: Якщо не знайшли, шукаємо будь-який (connectable=False)
         if not self._device:
             _LOGGER.debug("Device not found as connectable, trying non-connectable scan...")
             self._device = bluetooth.async_ble_device_from_address(
@@ -101,7 +100,7 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 name=self.address,
                 disconnected_callback=self._on_disconnected,
                 use_services_cache=True,
-                max_attempts=3 # Робимо 3 спроби підключення
+                max_attempts=3
             )
             _LOGGER.info("Connected to PT Baby Swing!")
         except Exception as err:
@@ -158,20 +157,20 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self.async_turn_off()
             return
 
-        # 1. Пробудження (ігноруємо помилки, якщо вже прокинувся)
+        # Пробудження
         try:
              await self.async_send_command(CMD_POWER_ON)
              await asyncio.sleep(0.5)
-        except Exception as e:
-            _LOGGER.warning("Wake up command failed (might be already awake): %s", e)
+        except Exception: pass
 
-        # 2. Швидкість
         cmd = SWING_SPEEDS.get(speed)
         if cmd:
             await self.async_send_command(cmd)
             self._swing_speed = speed
             self._is_on = True
             self.async_set_updated_data(await self._async_update_data())
+
+    # --- МЕЛОДІЇ ---
 
     async def async_set_melody(self, melody: int) -> None:
         if melody in MELODIES:
@@ -186,10 +185,49 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._melody_on = True
             self.async_set_updated_data(await self._async_update_data())
 
+    async def async_melody_on(self) -> None:
+        await self.async_set_melody(self._current_melody)
+
+    async def async_melody_off(self) -> None:
+        # Якщо відома команда вимкнення музики - розкоментуйте
+        # await self.async_send_command("cmd00")
+        self._melody_on = False
+        self.async_set_updated_data(await self._async_update_data())
+
     async def async_next_melody(self) -> None:
         next_m = self._current_melody + 1
         if next_m > 9: next_m = 1
         await self.async_set_melody(next_m)
+
+    async def async_previous_melody(self) -> None:
+        prev_m = self._current_melody - 1
+        if prev_m < 1: prev_m = 9
+        await self.async_set_melody(prev_m)
+
+    # --- ДОДАТКОВІ ФУНКЦІЇ (які викликали помилку) ---
+
+    async def async_set_induction_mode(self, enabled: bool) -> None:
+        """Вмикання/вимикання індукційного режиму."""
+        # Тут можна додати команду, якщо вона відома
+        self._induction_mode = enabled
+        self.async_set_updated_data(await self._async_update_data())
+
+    async def async_set_timer(self, minutes: int) -> None:
+        """Встановлення таймера."""
+        self._timer = minutes
+        self.async_set_updated_data(await self._async_update_data())
+
+    async def async_volume_up(self) -> None:
+        """Збільшення гучності."""
+        self._volume = min(100, self._volume + 10)
+        # Додати команду гучності
+        self.async_set_updated_data(await self._async_update_data())
+
+    async def async_volume_down(self) -> None:
+        """Зменшення гучності."""
+        self._volume = max(0, self._volume - 10)
+        # Додати команду гучності
+        self.async_set_updated_data(await self._async_update_data())
 
     async def async_shutdown(self) -> None:
         if self._client:
