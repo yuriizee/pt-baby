@@ -74,10 +74,12 @@ class PTBabyFan(FanEntity):
             preset_mode: str | None = None,
             **kwargs,
         ) -> None:
-            """Викликається при натисканні 'Ввімкнути' або зміні швидкості."""
-            # Home Assistant може передати percentage=None, якщо просто натиснуто кнопку 'On'
-            await self.async_set_percentage(percentage or 20)
+            """Вмикання пристрою. Приймає percentage та preset_mode від HA."""
+            # Якщо відсоток не вказано (просто натиснули кнопку ON),
+            # встановлюємо першу швидкість (20%)
+            target_percentage = percentage or 20
+            await self.async_set_percentage(target_percentage)
 
     async def async_turn_off(self, **kwargs) -> None:
-        """Викликається при натисканні 'Вимкнути'."""
+        """Вимкнення пристрою."""
         await self.async_set_percentage(0)
