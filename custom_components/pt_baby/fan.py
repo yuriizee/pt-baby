@@ -1,39 +1,12 @@
-"""Fan platform for Baby Cradle (swing control)."""
-from __future__ import annotations
-
-import logging
-from typing import Any
-
-from homeassistant.components.fan import FanEntity, FanEntityFeature
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.util.percentage import (
-    percentage_to_ranged_value,
-    ranged_value_to_percentage,
-)
-
-from .const import DOMAIN
-from .coordinator import BabyCradleCoordinator
-from .entity import BabyCradleEntity
-
-_LOGGER = logging.getLogger(__name__)
-
-SPEED_RANGE = (1, 5)  # 5 швидкостей
-
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Set up the Baby Cradle fan."""
-    coordinator: BabyCradleCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([BabyCradleSwingFan(coordinator)])
-
 class BabyCradleSwingFan(BabyCradleEntity, FanEntity):
     """Representation of Baby Cradle swing as a fan."""
 
-    _attr_supported_features = FanEntityFeature.SET_SPEED
+    # ВИПРАВЛЕННЯ: Додаємо TURN_ON та TURN_OFF до списку можливостей
+    _attr_supported_features = (
+        FanEntityFeature.SET_SPEED |
+        FanEntityFeature.TURN_ON |
+        FanEntityFeature.TURN_OFF
+    )
     _attr_speed_count = 5
 
     def __init__(self, coordinator: BabyCradleCoordinator) -> None:
@@ -46,6 +19,7 @@ class BabyCradleSwingFan(BabyCradleEntity, FanEntity):
     @property
     def is_on(self) -> bool:
         """Return true if fan is on."""
+        # Перевірка на None важлива, якщо дані ще не прийшли
         return self.coordinator.data.get("swing_speed", 0) > 0
 
     @property
@@ -73,7 +47,7 @@ class BabyCradleSwingFan(BabyCradleEntity, FanEntity):
     ) -> None:
         """Turn on the fan."""
         if percentage is None:
-            percentage = 20  # Default to speed 1
+            percentage = 20  # Default to speed 1 (20%)
         await self.async_set_percentage(percentage)
 
     async def async_turn_off(self, **kwargs: Any) -> None:

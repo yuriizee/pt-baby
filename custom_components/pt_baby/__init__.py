@@ -19,6 +19,7 @@ PLATFORMS: list[Platform] = [
     Platform.MEDIA_PLAYER,
     Platform.NUMBER,
     Platform.SWITCH,
+    Platform.TEXT,
 ]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
