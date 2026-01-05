@@ -1,4 +1,4 @@
-class PTBabyFan(BabyCradleEntity, FanEntity):
+class PTBabyFan(PTBabyEntity, FanEntity):
     """Representation of Baby Cradle swing as a fan."""
 
     # ВИПРАВЛЕННЯ: Додаємо TURN_ON та TURN_OFF до списку можливостей
@@ -9,7 +9,7 @@ class PTBabyFan(BabyCradleEntity, FanEntity):
     )
     _attr_speed_count = 5
 
-    def __init__(self, coordinator: BabyCradleCoordinator) -> None:
+    def __init__(self, coordinator: PTBabyCoordinator) -> None:
         """Initialize the fan."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.address}_swing"
