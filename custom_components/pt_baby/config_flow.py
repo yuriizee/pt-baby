@@ -178,7 +178,7 @@ class PTBabyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._cached_gatt = await self._detect_gatt(self._discovered_device_address)
             service_uuid, write_char, notify_char = self._cached_gatt
             _LOGGER.info(
-                "Auto-detected GATT for %s: service=%s write=%s notify=%s",
+                "Auto-detected GATT for %s: service=%s write=%s notify=%s (will be saved)",
                 self._discovered_device_address,
                 service_uuid,
                 write_char,
