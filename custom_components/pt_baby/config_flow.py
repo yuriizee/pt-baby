@@ -5,7 +5,6 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-from bleak import BleakError
 from bleak_retry_connector import establish_connection, BleakClientWithServiceCache
 
 from homeassistant import config_entries
@@ -24,6 +23,7 @@ from .const import (
     CONF_SERVICE_UUID,
     CONF_WRITE_CHAR_UUID,
     CONF_NOTIFY_CHAR_UUID,
+    LOCAL_NAME_PREFIX,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -38,11 +38,71 @@ class PTBabyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._discovery_info: BluetoothServiceInfoBleak | None = None
         self._discovered_device_address: str | None = None
         self._discovered_device_name: str | None = None
+        self._cached_gatt: tuple[str, str, str | None] | None = None
+
+    def _is_pt_baby(self, name: str | None) -> bool:
+        """Check if bluetooth name matches PT-BABY prefix."""
+        if not name:
+            return False
+        return name.upper().startswith(LOCAL_NAME_PREFIX)
+
+    async def _detect_gatt(
+        self,
+        address: str,
+    ) -> tuple[str, str, str | None]:
+        """Try to autodetect service and characteristics."""
+        device = async_ble_device_from_address(self.hass, address, connectable=True)
+        if not device:
+            raise ValueError("Device not available for GATT inspection")
+
+        _LOGGER.debug("Connecting to %s to autodetect services", address)
+        client = await establish_connection(
+            BleakClientWithServiceCache, device, name=address
+        )
+
+        service_uuid: str | None = None
+        write_char: str | None = None
+        notify_char: str | None = None
+
+        try:
+            for service in client.services:
+                candidate_write: str | None = None
+                candidate_notify: str | None = None
+                for char in service.characteristics:
+                    props = set(char.properties)
+                    uuid = char.uuid.lower()
+
+                    if "write-without-response" in props or "write" in props:
+                        candidate_write = candidate_write or uuid
+                    if "notify" in props or "indicate" in props:
+                        candidate_notify = candidate_notify or uuid
+
+                if candidate_write:
+                    service_uuid = service.uuid.lower()
+                    write_char = candidate_write
+                    notify_char = candidate_notify
+                    _LOGGER.debug(
+                        "Selected service %s write %s notify %s",
+                        service_uuid,
+                        write_char,
+                        notify_char,
+                    )
+                    break
+        finally:
+            await client.disconnect()
+
+        if not service_uuid or not write_char:
+            raise ValueError("No writable characteristic found")
+
+        return service_uuid, write_char, notify_char
 
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
     ) -> FlowResult:
         """Handle bluetooth discovery."""
+        if not self._is_pt_baby(discovery_info.name):
+            return self.async_abort(reason="not_pt_baby_device")
+
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
         self._discovery_info = discovery_info
@@ -89,7 +149,8 @@ class PTBabyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         for discovery_info in async_discovered_service_info(self.hass, False):
             if discovery_info.address in current_addresses:
                 continue
-            # Показуємо всі пристрої, або фільтруємо по імені якщо хочете
+            if not self._is_pt_baby(discovery_info.name):
+                continue
             name = discovery_info.name or "Unknown"
             discovered_devices[discovery_info.address] = f"{name} ({discovery_info.address})"
 
@@ -123,6 +184,30 @@ class PTBabyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_NOTIFY_CHAR_UUID: user_input[CONF_NOTIFY_CHAR_UUID],
                 },
             )
+
+        # Спроба автоматичного визначення
+        try:
+            self._cached_gatt = await self._detect_gatt(self._discovered_device_address)
+            service_uuid, write_char, notify_char = self._cached_gatt
+            _LOGGER.info(
+                "Auto-detected GATT for %s: service=%s write=%s notify=%s",
+                self._discovered_device_address,
+                service_uuid,
+                write_char,
+                notify_char,
+            )
+            return self.async_create_entry(
+                title=self._discovered_device_name or "PT Baby Swing",
+                data={
+                    CONF_MAC_ADDRESS: self._discovered_device_address,
+                    CONF_DEVICE_NAME: self._discovered_device_name,
+                    CONF_SERVICE_UUID: service_uuid,
+                    CONF_WRITE_CHAR_UUID: write_char,
+                    CONF_NOTIFY_CHAR_UUID: notify_char,
+                },
+            )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Autodetect failed, falling back to manual: %s", err)
 
         # Підключаємось до пристрою, щоб отримати список UUID
         address = self._discovered_device_address

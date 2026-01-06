@@ -5,6 +5,7 @@ import asyncio
 import logging
 from datetime import timedelta
 from typing import Any
+from time import monotonic
 
 from bleak import BleakError
 from bleak.backends.device import BLEDevice
@@ -25,6 +26,7 @@ from .const import (
     CMD_POWER_OFF,
     SWING_SPEEDS,
     MELODIES,
+    WAKE_DELAY,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,6 +45,9 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._client: BleakClientWithServiceCache | None = None
         self._device: BLEDevice | None = None
         self._lock = asyncio.Lock()
+
+        self._notify_started = False
+        self._last_wake: float | None = None
 
         # Стан
         self._is_on = False
@@ -102,7 +107,8 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 use_services_cache=True,
                 max_attempts=3
             )
-            _LOGGER.info("Connected to PT Baby Swing!")
+            _LOGGER.info("Connected to PT Baby Swing at %s", self.address)
+            await self._maybe_start_notify()
         except Exception as err:
             self._client = None
             raise UpdateFailed(f"Connection failed: {err}") from err
@@ -114,21 +120,72 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._is_on = False
         self.async_set_updated_data(self.data)
 
-    async def async_send_command(self, command: str) -> None:
-        """Відправка команди (публічний метод)."""
-        if not command: return
+    async def _maybe_start_notify(self) -> None:
+        """Start notify stream if characteristic is known."""
+        if not self._client or not self.notify_char_uuid or self._notify_started:
+            return
+
+        try:
+            await self._client.start_notify(
+                self.notify_char_uuid, self._handle_notification
+            )
+            self._notify_started = True
+            _LOGGER.debug(
+                "Started notify on %s for %s",
+                self.notify_char_uuid,
+                self.address,
+            )
+        except Exception as err:
+            # Не блокуюча помилка: повідомляємо, але продовжуємо роботу
+            _LOGGER.debug("Notify unavailable on %s: %s", self.notify_char_uuid, err)
+
+    def _handle_notification(self, sender: int, data: bytearray) -> None:
+        """Log incoming notifications for debugging."""
+        _LOGGER.debug("Notification from %s: %s", sender, data.hex())
+
+    async def _write_command(self, command: str) -> None:
+        """Low-level write helper."""
+        if not self._client:
+            raise UpdateFailed("Client is not connected")
+        if not self.write_char_uuid:
+            raise UpdateFailed("Write characteristic UUID is missing")
+
+        cmd_bytes = command.encode("utf-8")
+        await self._client.write_gatt_char(
+            self.write_char_uuid,
+            cmd_bytes,
+            response=False,
+        )
+        _LOGGER.info("Sent command: %s", command)
+
+    async def _wake_device(self) -> None:
+        """Send wake-up before other commands."""
+        # throttle wake-ups a little to avoid spamming
+        now = monotonic()
+        if self._last_wake and now - self._last_wake < 2:
+            _LOGGER.debug("Wake skipped (recent wake %.2fs ago)", now - self._last_wake)
+            return
+
+        _LOGGER.debug("Sending wake command %s", CMD_POWER_ON)
+        await self._write_command(CMD_POWER_ON)
+        self._last_wake = now
+        self._is_on = True
+        await asyncio.sleep(WAKE_DELAY)
+
+    async def async_send_command(self, command: str, *, ensure_wake: bool = True) -> None:
+        """Public command sender with wake/lock/connection handling."""
+        if not command:
+            _LOGGER.debug("Empty command ignored")
+            return
 
         async with self._lock:
             try:
                 await self._ensure_connected()
 
-                cmd_bytes = command.encode('utf-8')
+                if ensure_wake and command != CMD_POWER_ON:
+                    await self._wake_device()
 
-                await self._client.write_gatt_char(
-                    self.write_char_uuid, cmd_bytes, response=False
-                )
-                _LOGGER.info("Sent command: %s", command)
-
+                await self._write_command(command)
             except Exception as err:
                 _LOGGER.error("Error sending %s: %s", command, err)
                 if self._client:
@@ -140,7 +197,7 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_turn_on(self) -> None:
         """Увімкнення."""
-        await self.async_send_command(CMD_POWER_ON)
+        await self.async_send_command(CMD_POWER_ON, ensure_wake=False)
         self._is_on = True
         self.async_set_updated_data(await self._async_update_data())
 
@@ -157,29 +214,21 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self.async_turn_off()
             return
 
-        # Пробудження
-        try:
-             await self.async_send_command(CMD_POWER_ON)
-             await asyncio.sleep(0.5)
-        except Exception: pass
-
         cmd = SWING_SPEEDS.get(speed)
-        if cmd:
-            await self.async_send_command(cmd)
-            self._swing_speed = speed
-            self._is_on = True
-            self.async_set_updated_data(await self._async_update_data())
+        if not cmd:
+            _LOGGER.error("Unknown swing speed %s", speed)
+            return
+
+        _LOGGER.debug("Setting swing speed %s via %s", speed, cmd)
+        await self.async_send_command(cmd)
+        self._swing_speed = speed
+        self._is_on = True
+        self.async_set_updated_data(await self._async_update_data())
 
     # --- МЕЛОДІЇ ---
 
     async def async_set_melody(self, melody: int) -> None:
         if melody in MELODIES:
-            if not self._is_on:
-                 try:
-                     await self.async_send_command(CMD_POWER_ON)
-                     await asyncio.sleep(0.5)
-                 except Exception: pass
-
             await self.async_send_command(MELODIES[melody])
             self._current_melody = melody
             self._melody_on = True

@@ -27,7 +27,8 @@ class PTBabyDebugInput(PTBabyEntity, TextEntity):
 
     def __init__(self, coordinator: PTBabyCoordinator) -> None:
         super().__init__(coordinator)
-        self._attr_name = "Debug Command"
+        self._attr_name = "Команда"
+        self._attr_translation_key = "debug_command"
         self._attr_unique_id = f"{coordinator.address}_debug_cmd"
         self._attr_icon = "mdi:console-line"
         self._attr_native_value = ""
@@ -39,7 +40,7 @@ class PTBabyDebugInput(PTBabyEntity, TextEntity):
         if not command:
             return
 
-        _LOGGER.info(f"Sending raw debug command: {command}")
+        _LOGGER.info("Sending raw debug command: %s", command)
 
         # Використовуємо метод координатора замість створення нового підключення
         try:

@@ -2,6 +2,7 @@
 from homeassistant.const import Platform
 
 DOMAIN = "pt_baby"
+LOCAL_NAME_PREFIX = "PT-BABY"
 
 # UUID (ключі для конфігурації)
 CONF_SERVICE_UUID = "service_uuid"
@@ -14,6 +15,7 @@ CONF_DEVICE_NAME = "device_name"
 # Важливо: cmd38 - це пробудження. Без нього нічого не працює.
 CMD_POWER_ON = "cmd38"
 CMD_POWER_OFF = "cmd39"
+# Невідомо чи є команда вимкнення, тож 39 лишається як припущення
 
 # Швидкості (виправлено згідно вашого опису: 1 -> cmd11)
 SWING_SPEEDS = {
@@ -44,3 +46,6 @@ ATTR_SWING_SPEED = "swing_speed"
 ATTR_MELODY = "melody"
 ATTR_TIMER = "timer"
 ATTR_INDUCTION_MODE = "induction_mode"
+
+# Інтервал між "пробудженням" та відправкою основної команди
+WAKE_DELAY = 0.35

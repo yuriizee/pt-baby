@@ -15,7 +15,8 @@
     "abort": {
       "already_configured": "Пристрій вже налаштовано",
       "no_devices_found": "Пристрої не знайдено",
-      "cannot_discover_services": "Не вдалося виявити Bluetooth сервіси пристрою"
+      "cannot_discover_services": "Не вдалося виявити Bluetooth сервіси пристрою",
+      "not_pt_baby_device": "Це не пристрій PT-BABY"
     }
   },
   "entity": {
@@ -40,6 +41,11 @@
       },
       "induction_mode": {
         "name": "Індукційний режим"
+      }
+    },
+    "text": {
+      "debug_command": {
+        "name": "Команда пристрою"
       }
     }
   }
