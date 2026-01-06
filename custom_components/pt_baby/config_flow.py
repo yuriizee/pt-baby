@@ -23,6 +23,7 @@ from .const import (
     CONF_SERVICE_UUID,
     CONF_WRITE_CHAR_UUID,
     CONF_NOTIFY_CHAR_UUID,
+    LOCAL_NAME_PREFIX,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -38,6 +39,12 @@ class PTBabyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._discovered_device_address: str | None = None
         self._discovered_device_name: str | None = None
         self._cached_gatt: tuple[str, str, str | None] | None = None
+
+    def _is_pt_baby(self, name: str | None) -> bool:
+        """Check if bluetooth name matches PT-BABY prefix."""
+        if not name:
+            return False
+        return name.upper().startswith(LOCAL_NAME_PREFIX)
 
     async def _detect_gatt(
         self,
@@ -93,6 +100,9 @@ class PTBabyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, discovery_info: BluetoothServiceInfoBleak
     ) -> FlowResult:
         """Handle bluetooth discovery."""
+        if not self._is_pt_baby(discovery_info.name):
+            return self.async_abort(reason="not_pt_baby_device")
+
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
         self._discovery_info = discovery_info
@@ -139,6 +149,8 @@ class PTBabyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         for discovery_info in async_discovered_service_info(self.hass, False):
             if discovery_info.address in current_addresses:
                 continue
+            if not self._is_pt_baby(discovery_info.name):
+                continue
             name = discovery_info.name or "Unknown"
             discovered_devices[discovery_info.address] = f"{name} ({discovery_info.address})"
 
@@ -178,7 +190,7 @@ class PTBabyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._cached_gatt = await self._detect_gatt(self._discovered_device_address)
             service_uuid, write_char, notify_char = self._cached_gatt
             _LOGGER.info(
-                "Auto-detected GATT for %s: service=%s write=%s notify=%s (will be saved)",
+                "Auto-detected GATT for %s: service=%s write=%s notify=%s",
                 self._discovered_device_address,
                 service_uuid,
                 write_char,

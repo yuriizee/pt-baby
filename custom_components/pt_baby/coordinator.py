@@ -48,10 +48,6 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self._notify_started = False
         self._last_wake: float | None = None
-        self._log_prefix = (
-            f"{self.address} svc={self.service_uuid} wr={self.write_char_uuid} "
-            f"ntf={self.notify_char_uuid}"
-        )
 
         # Стан
         self._is_on = False
@@ -86,9 +82,6 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._client and self._client.is_connected:
             return
 
-        if not self.write_char_uuid:
-            raise UpdateFailed("Write characteristic UUID is missing in config entry")
-
         # Спроба 1: Шукаємо "хороший" пристрій (connectable=True)
         self._device = bluetooth.async_ble_device_from_address(
             self.hass, self.address, connectable=True
@@ -102,12 +95,9 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
         if not self._device:
-            raise UpdateFailed(
-                f"Device {self.address} not found via Bluetooth scan. "
-                "Check range or power."
-            )
+            raise UpdateFailed(f"Device {self.address} not found via Bluetooth scan. Check range or power.")
 
-        _LOGGER.info("Connecting to %s (%s)", self.address, self._log_prefix)
+        _LOGGER.debug("Connecting to %s...", self.address)
         try:
             self._client = await establish_connection(
                 BleakClientWithServiceCache,
@@ -161,21 +151,11 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed("Write characteristic UUID is missing")
 
         cmd_bytes = command.encode("utf-8")
-        try:
-            await self._client.write_gatt_char(
-                self.write_char_uuid,
-                cmd_bytes,
-                response=True,  # request ack for reliability
-            )
-        except Exception as err_first:
-            _LOGGER.debug(
-                "Write with response failed (%s), retry without response", err_first
-            )
-            await self._client.write_gatt_char(
-                self.write_char_uuid,
-                cmd_bytes,
-                response=False,
-            )
+        await self._client.write_gatt_char(
+            self.write_char_uuid,
+            cmd_bytes,
+            response=False,
+        )
         _LOGGER.info("Sent command: %s", command)
 
     async def _wake_device(self) -> None:
@@ -206,7 +186,6 @@ class PTBabyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     await self._wake_device()
 
                 await self._write_command(command)
-                _LOGGER.debug("Command %s completed (%s)", command, self._log_prefix)
             except Exception as err:
                 _LOGGER.error("Error sending %s: %s", command, err)
                 if self._client:

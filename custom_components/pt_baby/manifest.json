@@ -9,6 +9,7 @@
   "dependencies": ["bluetooth"],
   "requirements": ["bleak>=0.21.0", "bleak-retry-connector>=2.9.0"],
   "version": "1.1.0",
+  "icon": "https://github.com/yuriizee/pt_baby/raw/main/img/logo.png",
   "bluetooth": [
     {
       "local_name": "PT-BABY*"

@@ -24,13 +24,6 @@ PLATFORMS: list[Platform] = [
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Baby Cradle from a config entry."""
-    _LOGGER.info(
-        "Setting up PT Baby: address=%s service=%s write=%s notify=%s",
-        entry.data.get("mac_address"),
-        entry.data.get("service_uuid"),
-        entry.data.get("write_char_uuid"),
-        entry.data.get("notify_char_uuid"),
-    )
     coordinator = PTBabyCoordinator(hass, entry)
     
     try:
